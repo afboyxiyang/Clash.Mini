@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"net/http"
 	"os"
 	path "path/filepath"
@@ -37,14 +36,9 @@ type ConfigInfoModel struct {
 }
 
 var (
-	fileSizeUnits = []string{"", "K", "M", "G", "T", "P", "E"}
+	Profiles       []string
+	CurrentProfile string
 )
-
-// 格式化为可读文件大小
-func formatHumanizationFileSize(fileSize int64) (size string) {
-	i := math.Floor(math.Log(float64(fileSize)) / math.Log(1024))
-	return fmt.Sprintf("%.02f %sB", float64(fileSize)/math.Pow(1024, i), fileSizeUnits[int(i)])
-}
 
 func (m *ConfigInfoModel) ResetRows() {
 	fileInfoArr, err := ioutil.ReadDir(constant.ConfigDir)
@@ -53,8 +47,10 @@ func (m *ConfigInfoModel) ResetRows() {
 	}
 	var match string
 	m.items = make([]*ConfigInfo, 0)
+	Profiles = []string{}
 	for _, f := range fileInfoArr {
 		if path.Ext(f.Name()) == constant.ConfigSuffix {
+			profileName := strings.TrimSuffix(f.Name(), path.Ext(f.Name()))
 			content, err := os.OpenFile(path.Join(constant.ConfigDir, f.Name()), os.O_RDWR, 0666)
 			if err != nil {
 				log.Fatalln("ResetRows OpenFile error: %v", err)
@@ -73,11 +69,12 @@ func (m *ConfigInfoModel) ResetRows() {
 				return
 			}
 			m.items = append(m.items, &ConfigInfo{
-				Name: strings.TrimSuffix(f.Name(), path.Ext(f.Name())),
-				Size: formatHumanizationFileSize(f.Size()),
+				Name: profileName,
+				Size: util.FormatHumanizedFileSize(f.Size()),
 				Time: f.ModTime(),
 				Url:  match,
 			})
+			Profiles = append(Profiles, profileName)
 		}
 	}
 	m.PublishRowsReset()
@@ -155,11 +152,11 @@ func copyFileContents(src, dst, name string) (err error) {
 	return
 }
 
-func putConfig(name string) {
+func PutConfig(name string) {
 	cacheName, controllerPort := CheckConfig()
 	err := copyCacheFile(constant.CacheFile, path.Join(constant.CacheDir, cacheName+constant.CacheFile))
 	if err != nil {
-		log.Errorln("putConfig copyCacheFile1 error: %v", err)
+		log.Errorln("PutConfig copyCacheFile1 error: %v", err)
 	}
 	err = copyFileContents(path.Join(constant.ConfigDir, name+constant.ConfigSuffix), constant.ConfigFile, name)
 	if err != nil {
@@ -167,7 +164,7 @@ func putConfig(name string) {
 	}
 	err = copyCacheFile(path.Join(constant.CacheDir, name+constant.ConfigSuffix+constant.CacheFile), constant.CacheFile)
 	if err != nil {
-		log.Errorln("putConfig copyCacheFile2 error: %v", err)
+		log.Errorln("PutConfig copyCacheFile2 error: %v", err)
 	}
 	time.Sleep(1 * time.Second)
 	str := path.Join(constant.PWD, constant.ConfigFile)
@@ -176,20 +173,20 @@ func putConfig(name string) {
 	body["path"] = str
 	bytesData, err := json.Marshal(body)
 	if err != nil {
-		log.Errorln("putConfig Marshal error: %v", err)
+		log.Errorln("PutConfig Marshal error: %v", err)
 		return
 	}
 	reader := bytes.NewReader(bytesData)
 	request, err := http.NewRequest(http.MethodPut, url, reader)
 	if err != nil {
-		log.Errorln("putConfig NewRequest error: %v", err)
+		log.Errorln("PutConfig NewRequest error: %v", err)
 		return
 	}
 	request.Header.Set("Content-Type", "application/json;charset=UTF-8")
 	client := http.Client{}
 	resp, err := client.Do(request)
 	if err != nil {
-		log.Errorln("putConfig Do error: %v", err)
+		log.Errorln("PutConfig Do error: %v", err)
 		return
 	}
 
@@ -325,8 +322,8 @@ func UpdateSubscriptionUserInfo() (userInfo SubscriptionUserInfo) {
 			}
 			userInfo.Used = userInfo.Upload + userInfo.Download
 			userInfo.Unused = userInfo.Total - userInfo.Used
-			userInfo.UsedInfo = formatHumanizationFileSize(userInfo.Used)
-			userInfo.UnusedInfo = formatHumanizationFileSize(userInfo.Unused)
+			userInfo.UsedInfo = util.FormatHumanizedFileSize(userInfo.Used)
+			userInfo.UnusedInfo = util.FormatHumanizedFileSize(userInfo.Unused)
 			if userInfo.ExpireUnix > 0 {
 				userInfo.ExpireInfo = time.Unix(userInfo.ExpireUnix, 0).Format("2006-01-02")
 			} else {

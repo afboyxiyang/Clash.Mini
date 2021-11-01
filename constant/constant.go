@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	ConfigFile   = "config.yaml"
-	ConfigSuffix = ".yaml"
-	CacheFile    = ".cache"
+	ConfigSuffix 	= ".yaml"
+	ConfigFile   	= "config.yaml"
+	CacheFile    	= ".cache"
+	MmdbFile		= "Country.mmdb"
 
 	Localhost      = "127.0.0.1"
 	ControllerPort = "9090"
@@ -21,7 +22,7 @@ const (
 	NotifyDelay = 2 * time.Second
 
 	GitHubCDN  = "https://cdn.jsdelivr.net/gh/"
-	MMDBSuffix = "@release/Country.mmdb"
+	MMDBSuffix = "@release/" + MmdbFile
 
 	UIConfigMsgTitle = "配置提示"
 
@@ -29,11 +30,12 @@ const (
 )
 
 var (
-	PWD       string
-	ConfigDir = "profile"
-	CacheDir  = "cache"
+	PWD       	string
+	ConfigDir 	= ".core/.profile"
+	CacheDir  	= ".core/.cache"
 
-	osWindows bool
+	osWindows 	bool
+	Initialized	bool
 )
 
 func init() {
@@ -47,14 +49,14 @@ func init() {
 	osWindows = runtime.GOOS == "windows"
 	if _, err := os.Stat(ConfigDir); err != nil {
 		if os.IsNotExist(err) {
-			if err = os.Mkdir(ConfigDir, 0666); err != nil {
+			if err = os.MkdirAll(ConfigDir, 0666); err != nil {
 				log.Fatalln("cannot create config dir: %v", err)
 			}
 		}
 	}
 	if _, err := os.Stat(CacheDir); err != nil {
 		if os.IsNotExist(err) {
-			if err = os.Mkdir(CacheDir, 0666); err != nil {
+			if err = os.MkdirAll(CacheDir, 0666); err != nil {
 				log.Fatalln("cannot create cache dir: %v", err)
 			}
 		}

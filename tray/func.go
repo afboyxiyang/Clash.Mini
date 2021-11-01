@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/Clash-Mini/Clash.Mini/util"
-	"github.com/Dreamacro/clash/config"
-	"github.com/Dreamacro/clash/tunnel"
 	"net/http"
 	"os"
 	path "path/filepath"
@@ -19,26 +16,32 @@ import (
 	"github.com/Clash-Mini/Clash.Mini/cmd/startup"
 	"github.com/Clash-Mini/Clash.Mini/cmd/sys"
 	"github.com/Clash-Mini/Clash.Mini/cmd/task"
+	"github.com/Clash-Mini/Clash.Mini/config"
 	"github.com/Clash-Mini/Clash.Mini/constant"
 	"github.com/Clash-Mini/Clash.Mini/controller"
 	"github.com/Clash-Mini/Clash.Mini/icon"
 	"github.com/Clash-Mini/Clash.Mini/log"
 	"github.com/Clash-Mini/Clash.Mini/notify"
+	"github.com/Clash-Mini/Clash.Mini/proxy"
 	"github.com/Clash-Mini/Clash.Mini/sysproxy"
-	"github.com/Dreamacro/clash/proxy"
+	"github.com/Clash-Mini/Clash.Mini/util"
+
+	clashConfig "github.com/Dreamacro/clash/config"
+	cP "github.com/Dreamacro/clash/proxy"
+	"github.com/Dreamacro/clash/tunnel"
+	"github.com/MakeNowJust/hotkey"
 	stx "github.com/getlantern/systray"
 )
 
 var (
 	_, ControllerPort = controller.CheckConfig()
-
-	NeedLoadSelector = false
+	NeedLoadSelector  = false
 )
 
 func LoadSelector(mGroup *stx.MenuItemEx) {
-	if NeedLoadSelector && config.GroupsList.Len() > 0 {
+	if NeedLoadSelector && clashConfig.GroupsList.Len() > 0 {
 		groupNowMap := tunnel.Proxies()
-		SelectorMap = make(map[string]SelectorInfo)
+		SelectorMap = make(map[string]proxy.SelectorInfo)
 		util.JsonUnmarshal(util.IgnoreErrorBytes(json.Marshal(groupNowMap)), &SelectorMap)
 		for name, group := range SelectorMap {
 			if group.Now != "" {
@@ -100,10 +103,10 @@ func mEnabledFunc(mEnabled *stx.MenuItemEx) {
 		}
 	} else {
 		var Ports int
-		if proxy.GetPorts().MixedPort != 0 {
-			Ports = proxy.GetPorts().MixedPort
+		if cP.GetPorts().MixedPort != 0 {
+			Ports = cP.GetPorts().MixedPort
 		} else {
-			Ports = proxy.GetPorts().Port
+			Ports = cP.GetPorts().Port
 		}
 		err := sysproxy.SetSystemProxy(
 			&sysproxy.ProxyConfig{
@@ -123,13 +126,13 @@ func mEnabledFunc(mEnabled *stx.MenuItemEx) {
 
 func mOtherAutosysFunc(mOtherAutosys *stx.MenuItemEx) {
 	if mOtherAutosys.Checked() {
-		controller.RegCmd(sys.OFF)
-		if !controller.RegCompare(cmd.Sys) {
+		config.SetCmd(sys.OFF)
+		if !config.IsCmdPositive(cmd.Sys) {
 			notify.DoTrayMenuDelay(auto.OFF, constant.NotifyDelay)
 		}
 	} else {
-		controller.RegCmd(sys.ON)
-		if controller.RegCompare(cmd.Sys) {
+		config.SetCmd(sys.ON)
+		if config.IsCmdPositive(cmd.Sys) {
 			notify.DoTrayMenuDelay(auto.ON, constant.NotifyDelay)
 		}
 	}
@@ -139,13 +142,13 @@ func mOtherAutosysFunc(mOtherAutosys *stx.MenuItemEx) {
 func mOtherTaskFunc(mOtherTask *stx.MenuItemEx) {
 	if mOtherTask.Checked() {
 		controller.TaskCommand(task.OFF)
-		if !controller.RegCompare(cmd.Task) {
+		if !config.IsCmdPositive(cmd.Task) {
 			notify.DoTrayMenuDelay(startup.OFF, constant.NotifyDelay)
 		}
 	} else {
 		controller.TaskCommand(task.ON)
 		defer os.Remove(path.Join(".", "task.xml"))
-		if controller.RegCompare(cmd.Task) {
+		if config.IsCmdPositive(cmd.Task) {
 			notify.DoTrayMenuDelay(startup.ON, constant.NotifyDelay)
 		}
 		time.Sleep(2 * time.Second)
@@ -158,7 +161,7 @@ func maxMindMMBDFunc(maxMindMMBD *stx.MenuItemEx) {
 		return
 	} else {
 		controller.GetMMDB(mmdb.Max)
-		if !controller.RegCompare(cmd.MMDB) {
+		if !config.IsCmdPositive(cmd.MMDB) {
 			notify.DoTrayMenuDelay(mmdb.Max, constant.NotifyDelay)
 		}
 	}
@@ -170,7 +173,7 @@ func hackl0usMMDBFunc(hackl0usMMDB *stx.MenuItemEx) {
 		return
 	} else {
 		controller.GetMMDB(mmdb.Lite)
-		if controller.RegCompare(cmd.MMDB) {
+		if config.IsCmdPositive(cmd.MMDB) {
 			notify.DoTrayMenuDelay(mmdb.Lite, constant.NotifyDelay)
 		}
 	}
@@ -179,15 +182,47 @@ func hackl0usMMDBFunc(hackl0usMMDB *stx.MenuItemEx) {
 
 func mOtherUpdateCronFunc(mOtherUpdateCron *stx.MenuItemEx) {
 	if mOtherUpdateCron.Checked() {
-		controller.RegCmd(cron.OFF)
-		if !controller.RegCompare(cmd.Cron) {
+		config.SetCmd(cron.OFF)
+		if !config.IsCmdPositive(cmd.Cron) {
 			notify.DoTrayMenuDelay(cron.OFF, constant.NotifyDelay)
 		}
 	} else {
-		controller.RegCmd(cron.ON)
-		if !controller.RegCompare(cmd.Cron) {
+		config.SetCmd(cron.ON)
+		if !config.IsCmdPositive(cmd.Cron) {
 			notify.DoTrayMenuDelay(cron.ON, constant.NotifyDelay)
 		}
 	}
 	firstInit = true
+}
+
+func hotKey(mEnabled *stx.MenuItemEx) {
+	message := ""
+	hkey := hotkey.New()
+	_, err1 := hkey.Register(hotkey.Alt, 'R', func() {
+		tunnel.SetMode(tunnel.Rule)
+	})
+	if err1 != nil {
+		message += "Alt+R热键注册失败\n"
+	}
+	_, err2 := hkey.Register(hotkey.Alt, 'G', func() {
+		tunnel.SetMode(tunnel.Global)
+	})
+	if err2 != nil {
+		message += "Alt+G热键注册失败\n"
+	}
+	_, err3 := hkey.Register(hotkey.Alt, 'D', func() {
+		tunnel.SetMode(tunnel.Direct)
+	})
+	if err3 != nil {
+		message += "Alt+D热键注册失败\n"
+	}
+	_, err4 := hkey.Register(hotkey.Alt, 'S', func() {
+		mEnabledFunc(mEnabled)
+	})
+	if err4 != nil {
+		message += "Alt+S热键注册失败\n"
+	}
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
+		go notify.PushWithLine("📢通知📢", message)
+	}
 }
